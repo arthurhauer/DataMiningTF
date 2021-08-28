@@ -2,6 +2,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from mne.channels import make_standard_montage
 from scipy.signal.windows import boxcar
 
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
@@ -33,7 +34,7 @@ def creat_mne_raw_object(fname, read_events=True):
     ch_names = list(data.columns[1:])
 
     # read EEG standard montage from mne
-    # montage = make_standard_montage('standard_1005')
+    montage = make_standard_montage('standard_1005')
 
     ch_type = ['eeg'] * len(ch_names)
     data = 1e-6 * np.array(data[ch_names]).T
@@ -54,7 +55,9 @@ def creat_mne_raw_object(fname, read_events=True):
     info = create_info(ch_names, sfreq=500.0, ch_types=ch_type)
 
     # create raw object
-    return RawArray(data, info, verbose=False)
+    raw_array = RawArray(data, info, verbose=False)
+    raw_array.set_montage(montage)
+    return raw_array
 
 
 def cross_validation_prepare(folds, subject_index) -> Any:
@@ -64,7 +67,7 @@ def cross_validation_prepare(folds, subject_index) -> Any:
         '../../dataset/train/subj%d_series8_data.csv' % subject]
 
 
-def train_feature_extractor(data, data_picks, type="csp", **kwargs) -> Any:
+def train_feature_extractor(data, data_picks, extractor_type="csp", **kwargs) -> Any:
     during_tmin = kwargs.get('during_tmin')
     during_tmax = kwargs.get('during_tmax')
     before_tmin = kwargs.get('before_tmin')
@@ -103,9 +106,9 @@ def train_feature_extractor(data, data_picks, type="csp", **kwargs) -> Any:
     epochs = concatenate_epochs(epochs_tot)
 
     # get data
-    X = epochs.get_data()
+    x = epochs.get_data()
     y = np.array(y)
-    if type == "csp":
+    if extractor_type == "csp":
         num_filters = kwargs.get('nfilters')
         regularization = kwargs.get('regularization')
         if num_filters is None:
@@ -114,7 +117,7 @@ def train_feature_extractor(data, data_picks, type="csp", **kwargs) -> Any:
             regularization = 'ledoit_wolf'
         # train CSP
         csp = CSP(n_components=num_filters, reg=regularization)
-        csp.fit(X, y)
+        csp.fit(x, y)
         return csp
 
 
@@ -231,7 +234,7 @@ for subject in subjects:
     # Train feature extractor
     feature_extractor = train_feature_extractor(train_raw,
                                                 picks,
-                                                type="csp",
+                                                extractor_type="csp",
                                                 num_filters=nfilters,
                                                 regularization='ledoit_wolf',
                                                 during_tmin=0,
@@ -240,7 +243,8 @@ for subject in subjects:
                                                 before_tmax=0)
 
     # Preprocess training data
-    training_data = preprocess_data(train_raw, picks, smoothing=boxcar(nwin), trained_feature_extractor=feature_extractor,
+    training_data = preprocess_data(train_raw, picks, smoothing=boxcar(nwin),
+                                    trained_feature_extractor=feature_extractor,
                                     job_count=max_job_count)
 
     # training labels
