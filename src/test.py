@@ -1,9 +1,12 @@
+import time
 from typing import Any
 
+import joblib
 import numpy as np
 import pandas as pd
 from mne.channels import make_standard_montage
 from scipy.signal.windows import boxcar
+from sklearn import svm, neural_network
 
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.model_selection import cross_val_score
@@ -19,10 +22,6 @@ from sklearn.linear_model import LogisticRegression
 from glob import glob
 
 from joblib import Parallel, delayed
-
-from lasagne import layers, nonlinearities
-from lasagne.updates import nesterov_momentum
-from nolearn.lasagne import NeuralNet
 
 
 def creat_mne_raw_object(fname, read_events=True):
@@ -63,28 +62,22 @@ def creat_mne_raw_object(fname, read_events=True):
 def cross_validation_prepare(folds, subject_index) -> Any:
     if folds > 8 or folds < 2:
         raise Exception('Unsupported folds')
-    return glob('../../dataset/train/subj%d_series[1-7]_data.csv' % subject_index), [
-        '../../dataset/train/subj%d_series8_data.csv' % subject]
+    return glob(dataset_path + 'subj%d_series[1-7]_data.csv' % subject_index), [
+        dataset_path + 'subj%d_series8_data.csv' % subject]
 
 
 def train_feature_extractor(data, data_picks, extractor_type="csp", **kwargs) -> Any:
-    during_tmin = kwargs.get('during_tmin')
-    during_tmax = kwargs.get('during_tmax')
-    before_tmin = kwargs.get('before_tmin')
-    before_tmax = kwargs.get('before_tmax')
-    if during_tmin is None:
-        during_tmin = 0
-    if during_tmax is None:
-        during_tmax = 2
-    if before_tmin is None:
-        before_tmin = -2
-    if before_tmax is None:
-        before_tmax = 0
+    event_window_before = kwargs.get('event_window_before')
+    event_window_after = kwargs.get('event_window_after')
+    if event_window_after is None:
+        event_window_after = 2
+    if event_window_before is None:
+        event_window_before = -2
     y = []
     # get event position corresponding to HandStart
     events_data = find_events(data, stim_channel='HandStart', verbose=False)
     # epochs signal for 2 second after the event
-    epochs = Epochs(data, events_data, {'during': 1}, during_tmin, during_tmax, proj=False,
+    epochs = Epochs(data, events_data, {'during': 1}, 0, event_window_after, proj=False,
                     picks=data_picks, baseline=None, preload=True,
                     verbose=False)
 
@@ -93,7 +86,7 @@ def train_feature_extractor(data, data_picks, extractor_type="csp", **kwargs) ->
 
     # epochs signal for 2 second before the event, this correspond to the
     # rest period.
-    epochs_rest = Epochs(data, events_data, {'before': 1}, before_tmin, before_tmax, proj=False,
+    epochs_rest = Epochs(data, events_data, {'before': 1}, event_window_before, 0, proj=False,
                          picks=data_picks, baseline=None, preload=True,
                          verbose=False)
 
@@ -143,34 +136,25 @@ def preprocess_data(data, data_picks, smoothing=None, trained_feature_extractor:
 
 
 def get_classifier(chosen_classifier) -> Any:
-    if chosen_classifier == "nn":
-        return NeuralNet(
-            layers=[  # three layers: one hidden layer
-                ('input', layers.InputLayer),
-                ('hidden', layers.DenseLayer),
-                ('output', layers.DenseLayer),
-            ],
-            # layer parameters:
-            input_shape=(None, 4),  # 96x96 input pixels per batch
-            hidden_num_units=100,  # number of units in hidden layer
-            output_nonlinearity=nonlinearities.sigmoid,  # output layer uses identity function
-            output_num_units=1,  # 30 target values
-
-            # optimization method:
-            update=nesterov_momentum,
-            update_learning_rate=0.001,
-            update_momentum=0.9,
-
-            regression=True,  # flag to indicate we're dealing with regression problem
-            max_epochs=15,  # we want to train this many epochs
-            # verbose=1,
+    if chosen_classifier == "multi-layer-perceptron":
+        return neural_network.MLPClassifier(
+            learning_rate='adaptive',
         )
-    elif chosen_classifier == 'lda':
-        return LinearDiscriminantAnalysis()
-    elif chosen_classifier == 'lr':
-        return LogisticRegression()
+    elif chosen_classifier == 'linear-discriminant-analysis':
+        return LinearDiscriminantAnalysis(
+
+        )
+    elif chosen_classifier == 'logistic-regression':
+        return LogisticRegression(
+
+        )
+    elif chosen_classifier == 'support-vector-machine':
+        return svm.SVC(
+
+        )
     else:
-        raise Exception('Unsupported classifier')
+        raise Exception(
+            'Unsupported classifier. Available classifiers:' + 'multi-layer-perceptron, ' + 'linear-discriminant-analysis, ' + 'logistic-regression, ' + 'support-vector-machine')
 
 
 def extract_events_from_file(file) -> Any:
@@ -185,6 +169,11 @@ def compare_predicted_and_actual(events_data, predicted):
     return predicted_event_quadratic_error
 
 
+dataset_path = "../dataset/train/"
+models_path = "../models/"
+submission_path = '../submission/'
+preload_model = None
+
 subjects = range(1, 2)
 ids_tot = []
 pred_tot = []
@@ -195,26 +184,26 @@ b, a = butter(5, np.array(freqs) / 250.0, btype='bandpass')
 
 # CSP parameters
 # Number of spatial filter to use
-nfilters = 4
+nfilters = 10
 
 # convolution
 # window for smoothing features
 nwin = 250
 
 # training subsample
-subsample = 100
+subsample = 10
 
 # max parallel jobs
 max_job_count = 5
-
-# submission file
-submission_file = 'beat_the_benchmark.csv'
 
 cols = ['HandStart', 'FirstDigitTouch',
         'BothStartLoadPhase', 'LiftOff',
         'Replace', 'BothReleased']
 
-classifier = 'lda'
+# classifier = 'multi-layer-perceptron'
+# classifier = 'support-vector-machine'
+classifier = 'linear-discriminant-analysis'
+# classifier = 'logistic-regression'
 
 cross_validation_folds = 8
 
@@ -267,18 +256,27 @@ for subject in subjects:
                                 job_count=max_job_count)
     del test_raw
 
-    predictor = get_classifier(classifier)
+    predictor = None
+    if preload_model is not None:
+        predictor = joblib.load(models_path + preload_model)
+    else:
+        predictor = get_classifier(classifier)
 
     predictions = np.empty((len(ids), 6))
     for i in range(6):
-        print('Training subject %d, class %s with %s predictor' % (subject, cols[i], classifier))
-        predictor.fit(training_data[:, ::subsample].T, labels[i, ::subsample])
-        print('Done! Testing...')
+        if preload_model is None:
+            print('Training subject %d, class %s with %s predictor' % (subject, cols[i], classifier))
+            predictor.fit(training_data[:, ::subsample].T, labels[i, ::subsample])
+            print('Done!')
+        print('Testing...')
         predictions[:, i] = predictor.predict_proba(test_data.T)[:, 1]
-        print('Done! Testing with cross validation')
-        score = cross_val_score(predictor, training_data[:, ::subsample].T, labels[i, ::subsample])
-        print("Done! Got the following scores: " + str(score))
+        print('Done!')
+        # score = cross_val_score(predictor, training_data[:, ::subsample].T, labels[i, ::subsample])
+        # print("Done! Got the following scores: " + str(score))
 
+    if preload_model is None:
+        joblib.dump(predictor,
+                    '%ssubject_%d_%s_%s.sav' % (models_path, subject, classifier, time.strftime('%Y%m%d%H%M%S')))
     events = np.transpose(np.concatenate([extract_events_from_file(file)[0] for file in test_labels]))
     error = compare_predicted_and_actual(events, predictions)
 
@@ -290,4 +288,5 @@ submission = pd.DataFrame(index=np.concatenate(ids_tot),
                           data=np.concatenate(pred_tot))
 
 # write file
-submission.to_csv(submission_file, index_label='id', float_format='%.5f')
+submission.to_csv('%s%s_%s.csv' % (submission_path, classifier, time.strftime('%Y%m%d%H%M%S')), index_label='id',
+                  float_format='%.5f')

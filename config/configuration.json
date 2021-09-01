@@ -1,0 +1,33 @@
+{
+  "general": {
+    "maximum-paralel-jobs": 5,
+    "subsamples": 10,
+    "cross-validation-folds": 8,
+    "dataset-path": "../dataset/train/",
+    "trained-models-path": "../models/",
+    "submission-path": "../submission/",
+    "subject-range": {
+      "start": 1,
+      "end": 2
+    },
+    "sampling-frequency": 500
+  },
+  "pre-filtering": {
+    "type": "butterworth",
+    "order": 5,
+    "maximum-frequency": 30,
+    "minimum-frequency": 7
+  },
+  "feature-extractor": {
+    "type": "csp",
+    "smoothing-window-size": 250,
+    "number-of-filters": 10,
+    "regularization": "ledoit_wolf",
+    "event-window-before": 2,
+    "event-window-after": 2
+  },
+  "classifier": {
+    "type": "linear-discriminant-analysis",
+    "preload-model-file": "linear-discriminant-analysis_08_31__221449_subject_1.sav"
+  }
+}
