@@ -19,18 +19,18 @@
     "minimum-frequency": 7
   },
   "feature-extractor": {
-    "type": "csp",
+    "type": "tsfel",
     "event-window-before": 2,
     "event-window-after": 2,
     "smoothing-window-size": 250,
-    "smoothing-type": "boxcar",
+    "smoothing-type": null,
     "number-of-filters": 10,
     "regularization": "ledoit_wolf"
   },
   "classifier": {
-    "type": "linear-discriminant-analysis",
+    "type": "logistic-regression",
     "preload-model-file": null,
     "should-train": true,
-    "should-save": true
+    "should-save": false
   }
 }

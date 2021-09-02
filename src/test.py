@@ -4,6 +4,7 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+import tsfel
 from mne.channels import make_standard_montage
 from scipy.signal.windows import boxcar
 from sklearn import svm, neural_network
@@ -27,6 +28,7 @@ from config.configuration import Configuration
 
 
 def create_pre_filter(configuration_data: Configuration) -> Any:
+    print('Generating pre filter')
     if configuration_data.get_pre_filtering_type() == 'butterworth':
         frequencies = [
             configuration_data.get_pre_filtering_settings()['minimum-frequency'],
@@ -40,6 +42,7 @@ def create_pre_filter(configuration_data: Configuration) -> Any:
 
 
 def creat_mne_raw_object(fname, read_events=True):
+    print('Reading EEG data')
     """Create a mne raw instance from csv file"""
     # Read EEG file
     data = pd.read_csv(fname)
@@ -82,6 +85,7 @@ def cross_validation_prepare(folds, subject_index) -> Any:
 
 
 def train_feature_extractor(data, data_picks, configuration_data: Configuration) -> Any:
+    print('Starting feature extractor training')
     event_window_before = configuration_data.get_event_window_before()
     event_window_after = configuration_data.get_event_window_after()
     y = []
@@ -114,6 +118,7 @@ def train_feature_extractor(data, data_picks, configuration_data: Configuration)
     y = np.array(y)
     extractor_type = configuration_data.get_feature_extractor_type()
     if extractor_type == "csp":
+        print('Training CSP')
         num_filters = configuration_data.get_feature_extractor_settings()['number-of-filters']
         regularization = configuration_data.get_feature_extractor_settings()['regularization']
         if num_filters is None:
@@ -124,26 +129,39 @@ def train_feature_extractor(data, data_picks, configuration_data: Configuration)
         csp = CSP(n_components=num_filters, reg=regularization)
         csp.fit(x, y)
         return csp
+
+    elif extractor_type == 'tsfel':
+        print('Training TSFEL')
+        return tsfel.get_features_by_domain()
     else:
-        raise Exception('Unsupported feature extractor. Available types: ' + 'csp')
+        raise Exception('Unsupported feature extractor. Available types: ' + 'csp, ' + 'tsfel')
 
 
 def preprocess_data(data, data_picks, configuration_data: Configuration,
                     trained_feature_extractor: Any = None) -> np.ndarray:
+    print('Starting data pre-process...')
     extracted_data: Any
     processed_data: Any
     number_of_filters = configuration_data.get_feature_extractor_settings()['number-of-filters']
-    smoothing = None
-    if configuration_data.get_smoothing_type() == 'boxcar':
+    smoothing_type = configuration_data.get_smoothing_type()
+    if smoothing_type is None:
+        smoothing = None
+    elif smoothing_type == 'boxcar':
         smoothing = boxcar(configuration_data.get_smoothing_window_size())
+    else:
+        raise Exception('Unsupported smoothing type. Available types: ' + 'boxcar')
 
+    print('Extracting features')
     if trained_feature_extractor is None:
         extracted_data = data
     elif isinstance(feature_extractor, CSP):
         extracted_data = np.dot(trained_feature_extractor.filters_[0:number_of_filters], data._data[data_picks]) ** 2
+    elif configuration_data.get_feature_extractor_type() == 'tsfel':
+        extracted_data = tsfel.time_series_features_extractor(trained_feature_extractor, data._data[data_picks],
+                                                              fs=configuration_data.get_sampling_frequency())
     else:
-        raise Exception("Unsupported feature extractor")
-
+        raise Exception("Unsupported feature extractor. Available types: " + 'csp, ' + 'tsfel')
+    print('Smoothing')
     if smoothing is not None:
         processed_data = np.array(
             Parallel(n_jobs=configuration_data.get_maximum_paralel_jobs())(
@@ -157,6 +175,7 @@ def preprocess_data(data, data_picks, configuration_data: Configuration,
 
 
 def get_classifier(configuration_data: Configuration) -> Any:
+    print('Choosing classifier')
     if configuration.has_preloaded_model():
         return configuration.get_preloaded_model()
     else:
@@ -255,6 +274,7 @@ for subject in subjects:
     predictor = get_classifier(configuration)
 
     predictions = np.empty((len(ids), 6))
+    print('Starting classifier training')
     for i in range(6):
         if configuration.should_train_classifier():
             print('Training subject %d, class %s with %s predictor' % (
@@ -276,6 +296,7 @@ for subject in subjects:
 
     pred_tot.append(error)
 
+    print('Creating submission file')
 # create pandas object for submission
 submission = pd.DataFrame(index=np.concatenate(ids_tot),
                           columns=cols,
