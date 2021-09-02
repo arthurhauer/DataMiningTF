@@ -20,14 +20,16 @@
   },
   "feature-extractor": {
     "type": "csp",
+    "event-window-before": 2,
+    "event-window-after": 2,
     "smoothing-window-size": 250,
     "number-of-filters": 10,
-    "regularization": "ledoit_wolf",
-    "event-window-before": 2,
-    "event-window-after": 2
+    "regularization": "ledoit_wolf"
   },
   "classifier": {
     "type": "linear-discriminant-analysis",
-    "preload-model-file": "linear-discriminant-analysis_08_31__221449_subject_1.sav"
+    "preload-model-file": null,
+    "should-train": false,
+    "should-save": true
   }
 }

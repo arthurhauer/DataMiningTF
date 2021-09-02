@@ -23,6 +23,21 @@ from glob import glob
 
 from joblib import Parallel, delayed
 
+from config.configuration import Configuration
+
+
+def create_pre_filter(configuration_data: Configuration) -> Any:
+    if configuration_data.get_pre_filtering_type() == 'butterworth':
+        frequencies = [
+            configuration_data.get_pre_filtering_settings()['minimum-frequency'],
+            configuration_data.get_pre_filtering_settings()['maximum-frequency']
+        ]
+        filter_order = configuration_data.get_pre_filtering_settings()['order']
+        return butter(filter_order,
+                      np.array(frequencies) / configuration_data.get_sampling_frequency(), btype='bandpass')
+    else:
+        raise Exception("Unsupported pre-filtering type. Available filters: " + "butterworth")
+
 
 def creat_mne_raw_object(fname, read_events=True):
     """Create a mne raw instance from csv file"""
@@ -66,13 +81,9 @@ def cross_validation_prepare(folds, subject_index) -> Any:
         dataset_path + 'subj%d_series8_data.csv' % subject]
 
 
-def train_feature_extractor(data, data_picks, extractor_type="csp", **kwargs) -> Any:
-    event_window_before = kwargs.get('event_window_before')
-    event_window_after = kwargs.get('event_window_after')
-    if event_window_after is None:
-        event_window_after = 2
-    if event_window_before is None:
-        event_window_before = -2
+def train_feature_extractor(data, data_picks, configuration_data: Configuration) -> Any:
+    event_window_before = configuration_data.get_event_window_before()
+    event_window_after = configuration_data.get_event_window_after()
     y = []
     # get event position corresponding to HandStart
     events_data = find_events(data, stim_channel='HandStart', verbose=False)
@@ -86,7 +97,7 @@ def train_feature_extractor(data, data_picks, extractor_type="csp", **kwargs) ->
 
     # epochs signal for 2 second before the event, this correspond to the
     # rest period.
-    epochs_rest = Epochs(data, events_data, {'before': 1}, event_window_before, 0, proj=False,
+    epochs_rest = Epochs(data, events_data, {'before': 1}, -event_window_before, 0, proj=False,
                          picks=data_picks, baseline=None, preload=True,
                          verbose=False)
 
@@ -101,9 +112,10 @@ def train_feature_extractor(data, data_picks, extractor_type="csp", **kwargs) ->
     # get data
     x = epochs.get_data()
     y = np.array(y)
+    extractor_type = configuration_data.get_feature_extractor_type()
     if extractor_type == "csp":
-        num_filters = kwargs.get('nfilters')
-        regularization = kwargs.get('regularization')
+        num_filters = configuration_data.get_feature_extractor_settings()['number-of-filters']
+        regularization = configuration_data.get_feature_extractor_settings()['regularization']
         if num_filters is None:
             num_filters = 4
         if regularization is None:
@@ -112,22 +124,26 @@ def train_feature_extractor(data, data_picks, extractor_type="csp", **kwargs) ->
         csp = CSP(n_components=num_filters, reg=regularization)
         csp.fit(x, y)
         return csp
+    else:
+        raise Exception('Unsupported feature extractor. Available types: ' + 'csp')
 
 
-def preprocess_data(data, data_picks, smoothing=None, trained_feature_extractor: Any = None,
-                    job_count: int = -1) -> np.ndarray:
+def preprocess_data(data, data_picks, configuration_data: Configuration,
+                    trained_feature_extractor: Any = None) -> np.ndarray:
     extracted_data: Any
     processed_data: Any
+    number_of_filters = configuration_data.get_feature_extractor_settings()['number-of-filters']
+    smoothing = configuration_data.get_smoothing_window_size()
     if trained_feature_extractor is None:
         extracted_data = data
     elif isinstance(feature_extractor, CSP):
-        extracted_data = np.dot(trained_feature_extractor.filters_[0:nfilters], data._data[data_picks]) ** 2
+        extracted_data = np.dot(trained_feature_extractor.filters_[0:number_of_filters], data._data[data_picks]) ** 2
     else:
         raise Exception("Unsupported feature extractor")
     if smoothing is not None:
         processed_data = np.array(
-            Parallel(n_jobs=job_count)(
-                delayed(convolve)(extracted_data[i], smoothing, 'full') for i in range(nfilters)))
+            Parallel(n_jobs=configuration_data.get_maximum_paralel_jobs())(
+                delayed(convolve)(extracted_data[i], smoothing, 'full') for i in range(number_of_filters)))
     else:
         processed_data = extracted_data
     processed_data = np.log(processed_data[:, 0:extracted_data.shape[1]])
@@ -135,26 +151,30 @@ def preprocess_data(data, data_picks, smoothing=None, trained_feature_extractor:
     return processed_data
 
 
-def get_classifier(chosen_classifier) -> Any:
-    if chosen_classifier == "multi-layer-perceptron":
-        return neural_network.MLPClassifier(
-            learning_rate='adaptive',
-        )
-    elif chosen_classifier == 'linear-discriminant-analysis':
-        return LinearDiscriminantAnalysis(
-
-        )
-    elif chosen_classifier == 'logistic-regression':
-        return LogisticRegression(
-
-        )
-    elif chosen_classifier == 'support-vector-machine':
-        return svm.SVC(
-
-        )
+def get_classifier(configuration_data: Configuration) -> Any:
+    if configuration.has_preloaded_model():
+        return configuration.get_preloaded_model()
     else:
-        raise Exception(
-            'Unsupported classifier. Available classifiers:' + 'multi-layer-perceptron, ' + 'linear-discriminant-analysis, ' + 'logistic-regression, ' + 'support-vector-machine')
+        chosen_classifier = configuration_data.get_classifier_type()
+        if chosen_classifier == "multi-layer-perceptron":
+            return neural_network.MLPClassifier(
+                learning_rate='adaptive',
+            )
+        elif chosen_classifier == 'linear-discriminant-analysis':
+            return LinearDiscriminantAnalysis(
+
+            )
+        elif chosen_classifier == 'logistic-regression':
+            return LogisticRegression(
+
+            )
+        elif chosen_classifier == 'support-vector-machine':
+            return svm.SVC(
+
+            )
+        else:
+            raise Exception(
+                'Unsupported classifier. Available classifiers:' + 'multi-layer-perceptron, ' + 'linear-discriminant-analysis, ' + 'logistic-regression, ' + 'support-vector-machine')
 
 
 def extract_events_from_file(file) -> Any:
@@ -169,43 +189,20 @@ def compare_predicted_and_actual(events_data, predicted):
     return predicted_event_quadratic_error
 
 
-dataset_path = "../dataset/train/"
-models_path = "../models/"
-submission_path = '../submission/'
-preload_model = None
+configuration = Configuration()
 
-subjects = range(1, 2)
+dataset_path = configuration.get_dataset_path()
+submission_path = configuration.get_submission_path()
+
+subjects = range(configuration.get_subject_range_start(), configuration.get_subject_range_end())
 ids_tot = []
 pred_tot = []
 
-# design a butterworth bandpass filter
-freqs = [7, 30]
-b, a = butter(5, np.array(freqs) / 250.0, btype='bandpass')
-
-# CSP parameters
-# Number of spatial filter to use
-nfilters = 10
-
-# convolution
-# window for smoothing features
-nwin = 250
-
-# training subsample
-subsample = 10
-
-# max parallel jobs
-max_job_count = 5
+b, a = create_pre_filter(configuration)
 
 cols = ['HandStart', 'FirstDigitTouch',
         'BothStartLoadPhase', 'LiftOff',
         'Replace', 'BothReleased']
-
-# classifier = 'multi-layer-perceptron'
-# classifier = 'support-vector-machine'
-classifier = 'linear-discriminant-analysis'
-# classifier = 'logistic-regression'
-
-cross_validation_folds = 8
 
 for subject in subjects:
     epochs_tot = []
@@ -218,23 +215,17 @@ for subject in subjects:
 
     # Filter data for alpha frequency and beta band
     train_raw._data[picks] = np.array(
-        Parallel(n_jobs=max_job_count)(delayed(lfilter)(b, a, train_raw._data[i]) for i in picks))
+        Parallel(n_jobs=configuration.get_maximum_paralel_jobs())(
+            delayed(lfilter)(b, a, train_raw._data[i]) for i in picks))
 
     # Train feature extractor
     feature_extractor = train_feature_extractor(train_raw,
                                                 picks,
-                                                extractor_type="csp",
-                                                num_filters=nfilters,
-                                                regularization='ledoit_wolf',
-                                                during_tmin=0,
-                                                during_tmax=2,
-                                                before_tmin=-2,
-                                                before_tmax=0)
+                                                configuration)
 
     # Preprocess training data
-    training_data = preprocess_data(train_raw, picks, smoothing=boxcar(nwin),
-                                    trained_feature_extractor=feature_extractor,
-                                    job_count=max_job_count)
+    training_data = preprocess_data(train_raw, picks, configuration,
+                                    trained_feature_extractor=feature_extractor)
 
     # training labels
     labels = np.asarray(train_raw._data[32:], dtype=np.float32)
@@ -245,38 +236,36 @@ for subject in subjects:
     test_labels = [test_file.replace('_data', '_events') for test_file in test_files]
     test_raw = concatenate_raws(test_data)
     test_raw._data[picks] = np.array(
-        Parallel(n_jobs=max_job_count)(delayed(lfilter)(b, a, test_raw._data[i]) for i in picks))
+        Parallel(n_jobs=configuration.get_maximum_paralel_jobs())(
+            delayed(lfilter)(b, a, test_raw._data[i]) for i in picks))
 
     # read ids
     ids = np.concatenate([np.array(pd.read_csv(test_file)['id']) for test_file in test_files])
     ids_tot.append(ids)
 
     # Preprocess test data
-    test_data = preprocess_data(test_raw, picks, smoothing=boxcar(nwin), trained_feature_extractor=feature_extractor,
-                                job_count=max_job_count)
+    test_data = preprocess_data(test_raw, picks, configuration, trained_feature_extractor=feature_extractor)
     del test_raw
 
-    predictor = None
-    if preload_model is not None:
-        predictor = joblib.load(models_path + preload_model)
-    else:
-        predictor = get_classifier(classifier)
+    predictor = get_classifier(configuration)
 
     predictions = np.empty((len(ids), 6))
     for i in range(6):
-        if preload_model is None:
-            print('Training subject %d, class %s with %s predictor' % (subject, cols[i], classifier))
-            predictor.fit(training_data[:, ::subsample].T, labels[i, ::subsample])
+        if configuration.should_train_classifier():
+            print('Training subject %d, class %s with %s predictor' % (
+                subject, cols[i], configuration.get_classifier_type()))
+            predictor.fit(training_data[:, ::configuration.get_subsamples()].T,
+                          labels[i, ::configuration.get_subsamples()])
             print('Done!')
         print('Testing...')
         predictions[:, i] = predictor.predict_proba(test_data.T)[:, 1]
         print('Done!')
-        # score = cross_val_score(predictor, training_data[:, ::subsample].T, labels[i, ::subsample])
-        # print("Done! Got the following scores: " + str(score))
+        score = cross_val_score(predictor, training_data[:, ::configuration.get_subsamples()].T,
+                                labels[i, ::configuration.get_subsamples()])
+        print("Done! Got the following scores: " + str(score))
 
-    if preload_model is None:
-        joblib.dump(predictor,
-                    '%ssubject_%d_%s_%s.sav' % (models_path, subject, classifier, time.strftime('%Y%m%d%H%M%S')))
+    configuration.save_model(predictor, 'subject-%d' % subject)
+
     events = np.transpose(np.concatenate([extract_events_from_file(file)[0] for file in test_labels]))
     error = compare_predicted_and_actual(events, predictions)
 
@@ -288,5 +277,6 @@ submission = pd.DataFrame(index=np.concatenate(ids_tot),
                           data=np.concatenate(pred_tot))
 
 # write file
-submission.to_csv('%s%s_%s.csv' % (submission_path, classifier, time.strftime('%Y%m%d%H%M%S')), index_label='id',
+submission.to_csv('%s%s_%s.csv' % (submission_path, configuration.get_classifier_type(), time.strftime('%Y%m%d%H%M%S')),
+                  index_label='id',
                   float_format='%.5f')
