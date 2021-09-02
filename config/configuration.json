@@ -23,13 +23,14 @@
     "event-window-before": 2,
     "event-window-after": 2,
     "smoothing-window-size": 250,
+    "smoothing-type": "boxcar",
     "number-of-filters": 10,
     "regularization": "ledoit_wolf"
   },
   "classifier": {
     "type": "linear-discriminant-analysis",
     "preload-model-file": null,
-    "should-train": false,
+    "should-train": true,
     "should-save": true
   }
 }

@@ -133,19 +133,24 @@ def preprocess_data(data, data_picks, configuration_data: Configuration,
     extracted_data: Any
     processed_data: Any
     number_of_filters = configuration_data.get_feature_extractor_settings()['number-of-filters']
-    smoothing = configuration_data.get_smoothing_window_size()
+    smoothing = None
+    if configuration_data.get_smoothing_type() == 'boxcar':
+        smoothing = boxcar(configuration_data.get_smoothing_window_size())
+
     if trained_feature_extractor is None:
         extracted_data = data
     elif isinstance(feature_extractor, CSP):
         extracted_data = np.dot(trained_feature_extractor.filters_[0:number_of_filters], data._data[data_picks]) ** 2
     else:
         raise Exception("Unsupported feature extractor")
+
     if smoothing is not None:
         processed_data = np.array(
             Parallel(n_jobs=configuration_data.get_maximum_paralel_jobs())(
                 delayed(convolve)(extracted_data[i], smoothing, 'full') for i in range(number_of_filters)))
     else:
         processed_data = extracted_data
+
     processed_data = np.log(processed_data[:, 0:extracted_data.shape[1]])
     processed_data = np.asarray(processed_data, dtype=np.float32)
     return processed_data

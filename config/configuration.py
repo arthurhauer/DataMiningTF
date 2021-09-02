@@ -85,6 +85,9 @@ class Configuration:
     def get_smoothing_window_size(self) -> int:
         return self.get_feature_extractor_settings()['smoothing-window-size']
 
+    def get_smoothing_type(self) -> str:
+        return self.get_feature_extractor_settings()['smoothing-type']
+
     # end_region Feature extraction
 
     # ----------------------------------------------------------------------------------------------------------------------#
@@ -108,7 +111,7 @@ class Configuration:
 
     def save_model(self, classifier: Any, prefix: str = "", sufix: str = ""):
         if self._should_save_classifier():
-            joblib.dump(classifier, "%s%s_%s_s_%s_%s.sav" % (
+            joblib.dump(classifier, "%s%s_%s_%s_%s.sav" % (
                 self.get_trained_models_path(), prefix, self.get_classifier_type(), time.strftime('%Y%m%d%H%M%S'),
                 sufix))
 
