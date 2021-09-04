@@ -194,7 +194,8 @@ def get_classifier(configuration_data: Configuration) -> Any:
             )
         elif chosen_classifier == 'support-vector-machine':
             return svm.SVC(
-
+                max_iter=200,
+                probability=True
             )
         else:
             raise Exception(
@@ -209,7 +210,7 @@ def extract_events_from_file(file) -> Any:
 
 
 def compare_predicted_and_actual(events_data, predicted):
-    predicted_event_quadratic_error = np.square(np.subtract(events_data, predicted))
+    predicted_event_quadratic_error = np.absolute(events_data-predicted)
     return predicted_event_quadratic_error
 
 
@@ -221,7 +222,7 @@ submission_path = configuration.get_submission_path()
 subjects = range(configuration.get_subject_range_start(), configuration.get_subject_range_end())
 ids_tot = []
 pred_tot = []
-
+error_tot=[]
 b, a = create_pre_filter(configuration)
 
 cols = ['HandStart', 'FirstDigitTouch',
@@ -285,16 +286,16 @@ for subject in subjects:
         print('Testing...')
         predictions[:, i] = predictor.predict_proba(test_data.T)[:, 1]
         print('Done!')
-        score = cross_val_score(predictor, training_data[:, ::configuration.get_subsamples()].T,
-                                labels[i, ::configuration.get_subsamples()])
-        print("Done! Got the following scores: " + str(score))
+        # score = cross_val_score(predictor, training_data[:, ::configuration.get_subsamples()].T,
+        #                         labels[i, ::configuration.get_subsamples()])
+        # print("Done! Got the following scores: " + str(score))
 
     configuration.save_model(predictor, 'subject-%d' % subject)
 
     events = np.transpose(np.concatenate([extract_events_from_file(file)[0] for file in test_labels]))
     error = compare_predicted_and_actual(events, predictions)
-
-    pred_tot.append(error)
+    print('Sum of error: '+str(np.sum(error)/error.shape[0]))
+    pred_tot.append(predictions)
 
     print('Creating submission file')
 # create pandas object for submission

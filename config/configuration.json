@@ -1,16 +1,18 @@
 {
   "general": {
-    "maximum-paralel-jobs": 5,
-    "subsamples": 10,
+    "maximum-paralel-jobs": 10,
+    "subsamples": 100,
     "cross-validation-folds": 8,
     "dataset-path": "../dataset/train/",
     "trained-models-path": "../models/",
     "submission-path": "../submission/",
+    "result-path": "../results/",
     "subject-range": {
       "start": 1,
       "end": 2
     },
-    "sampling-frequency": 500
+    "sampling-frequency": 500,
+    "should-save-results": true
   },
   "pre-filtering": {
     "type": "butterworth",
@@ -19,18 +21,21 @@
     "minimum-frequency": 7
   },
   "feature-extractor": {
-    "type": "tsfel",
+    "type": "csp",
     "event-window-before": 2,
     "event-window-after": 2,
+    "preload-model-file": "subject-1_csp_20210903191602_.sav",
+    "should-train": false,
+    "should-save": false,
     "smoothing-window-size": 250,
-    "smoothing-type": null,
-    "number-of-filters": 10,
+    "smoothing-type": "boxcar",
+    "number-of-filters": 4,
     "regularization": "ledoit_wolf"
   },
   "classifier": {
-    "type": "logistic-regression",
+    "type": "support-vector-machine",
     "preload-model-file": null,
     "should-train": true,
-    "should-save": false
+    "should-save": true
   }
 }
