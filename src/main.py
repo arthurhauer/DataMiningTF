@@ -13,8 +13,8 @@ from mne.datasets import eegbci
 from mne.decoding import CSP
 # import mne
 
-train_set_labels = pd.read_csv("../../dataset/train/subj1_series1_events.csv")
-train_set_signals = pd.read_csv("../../dataset/train/subj1_series1_data.csv")
+train_set_labels = pd.read_csv("../dataset/train/subj1_series1_events.csv")
+train_set_signals = pd.read_csv("../dataset/train/subj1_series1_data.csv")
 train_set_signals.head()
 axis = plt.gca()
 downSampleToShow = 500

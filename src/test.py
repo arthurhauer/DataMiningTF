@@ -5,6 +5,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import tsfel
+import uuid
 from mne.channels import make_standard_montage
 from scipy.signal.windows import boxcar
 from sklearn import svm, neural_network
@@ -85,56 +86,66 @@ def cross_validation_prepare(folds, subject_index) -> Any:
 
 
 def train_feature_extractor(data, data_picks, configuration_data: Configuration) -> Any:
-    print('Starting feature extractor training')
-    event_window_before = configuration_data.get_event_window_before()
-    event_window_after = configuration_data.get_event_window_after()
-    y = []
-    # get event position corresponding to HandStart
-    events_data = find_events(data, stim_channel='HandStart', verbose=False)
-    # epochs signal for 2 second after the event
-    epochs = Epochs(data, events_data, {'during': 1}, 0, event_window_after, proj=False,
-                    picks=data_picks, baseline=None, preload=True,
-                    verbose=False)
+    extractor = None
+    if configuration_data.has_preloaded_extractor():
+        print('Loading extractor file...')
+        extractor = configuration_data.get_preloaded_extractor()
+        ex_file = configuration_data.get_preload_extractor_file()
+    if configuration_data.should_train_extractor() or extractor is None:
+        print('Starting feature extractor training')
+        event_window_before = configuration_data.get_event_window_before()
+        event_window_after = configuration_data.get_event_window_after()
+        y = []
+        # get event position corresponding to HandStart
+        events_data = find_events(data, stim_channel=configuration_data.get_events(), verbose=False)
+        # epochs signal for 2 second after the event
+        epochs = Epochs(data, events_data, {'during': 1}, 0, event_window_after, proj=False,
+                        picks=data_picks, baseline=None, preload=True,
+                        verbose=False)
 
-    epochs_tot.append(epochs)
-    y.extend([1] * len(epochs))
+        epochs_tot.append(epochs)
+        y.extend([1] * len(epochs))
 
-    # epochs signal for 2 second before the event, this correspond to the
-    # rest period.
-    epochs_rest = Epochs(data, events_data, {'before': 1}, -event_window_before, 0, proj=False,
-                         picks=data_picks, baseline=None, preload=True,
-                         verbose=False)
+        # epochs signal for 2 second before the event, this correspond to the
+        # rest period.
+        epochs_rest = Epochs(data, events_data, {'before': 1}, -event_window_before, 0, proj=False,
+                             picks=data_picks, baseline=None, preload=True,
+                             verbose=False)
 
-    # Workaround to be able to concatenate epochs with MNE
-    epochs_rest.set_times(epochs.times)
-    #
-    y.extend([-1] * len(epochs_rest))
-    epochs_tot.append(epochs_rest)
-    # Concatenate all epochs
-    epochs = concatenate_epochs(epochs_tot)
+        # Workaround to be able to concatenate epochs with MNE
+        epochs_rest.set_times(epochs.times)
+        #
+        y.extend([-1] * len(epochs_rest))
+        epochs_tot.append(epochs_rest)
+        # Concatenate all epochs
+        epochs = concatenate_epochs(epochs_tot)
 
-    # get data
-    x = epochs.get_data()
-    y = np.array(y)
-    extractor_type = configuration_data.get_feature_extractor_type()
-    if extractor_type == "csp":
-        print('Training CSP')
-        num_filters = configuration_data.get_feature_extractor_settings()['number-of-filters']
-        regularization = configuration_data.get_feature_extractor_settings()['regularization']
-        if num_filters is None:
-            num_filters = 4
-        if regularization is None:
-            regularization = 'ledoit_wolf'
-        # train CSP
-        csp = CSP(n_components=num_filters, reg=regularization)
-        csp.fit(x, y)
-        return csp
+        # get data
+        x = epochs.get_data()
+        y = np.array(y)
+        extractor_type = configuration_data.get_feature_extractor_type()
+        if extractor_type == "csp":
+            print('Training CSP')
+            num_filters = configuration_data.get_feature_extractor_settings()['number-of-filters']
+            regularization = configuration_data.get_feature_extractor_settings()['regularization']
+            if num_filters is None:
+                num_filters = 4
+            if regularization is None:
+                regularization = 'ledoit_wolf'
+            # train CSP
+            if extractor is None:
+                extractor = CSP(n_components=num_filters, reg=regularization)
+            extractor.fit(x, y)
 
-    elif extractor_type == 'tsfel':
-        print('Training TSFEL')
-        return tsfel.get_features_by_domain()
-    else:
-        raise Exception('Unsupported feature extractor. Available types: ' + 'csp, ' + 'tsfel')
+        elif extractor_type == 'tsfel':
+            print('Training TSFEL')
+            if extractor is None:
+                extractor = tsfel.get_features_by_domain()
+        else:
+            raise Exception('Unsupported feature extractor. Available types: ' + 'csp, ' + 'tsfel')
+        ex_file = configuration_data.save_extractor(extractor)
+    print('Done!')
+    return (extractor, ex_file)
 
 
 def preprocess_data(data, data_picks, configuration_data: Configuration,
@@ -210,7 +221,7 @@ def extract_events_from_file(file) -> Any:
 
 
 def compare_predicted_and_actual(events_data, predicted):
-    predicted_event_quadratic_error = np.absolute(events_data-predicted)
+    predicted_event_quadratic_error = np.absolute(events_data - predicted)
     return predicted_event_quadratic_error
 
 
@@ -218,16 +229,13 @@ configuration = Configuration()
 
 dataset_path = configuration.get_dataset_path()
 submission_path = configuration.get_submission_path()
-
+current_id = str(uuid.uuid4())
 subjects = range(configuration.get_subject_range_start(), configuration.get_subject_range_end())
 ids_tot = []
 pred_tot = []
-error_tot=[]
+error_tot = []
+results = []
 b, a = create_pre_filter(configuration)
-
-cols = ['HandStart', 'FirstDigitTouch',
-        'BothStartLoadPhase', 'LiftOff',
-        'Replace', 'BothReleased']
 
 for subject in subjects:
     epochs_tot = []
@@ -244,9 +252,9 @@ for subject in subjects:
             delayed(lfilter)(b, a, train_raw._data[i]) for i in picks))
 
     # Train feature extractor
-    feature_extractor = train_feature_extractor(train_raw,
-                                                picks,
-                                                configuration)
+    (feature_extractor, extractor_file) = train_feature_extractor(train_raw,
+                                                                  picks,
+                                                                  configuration)
 
     # Preprocess training data
     training_data = preprocess_data(train_raw, picks, configuration,
@@ -275,11 +283,12 @@ for subject in subjects:
     predictor = get_classifier(configuration)
 
     predictions = np.empty((len(ids), 6))
+    events = configuration.get_events()
     print('Starting classifier training')
-    for i in range(6):
+    for i in range(1, len(events)):
         if configuration.should_train_classifier():
             print('Training subject %d, class %s with %s predictor' % (
-                subject, cols[i], configuration.get_classifier_type()))
+                subject, events[i], configuration.get_classifier_type()))
             predictor.fit(training_data[:, ::configuration.get_subsamples()].T,
                           labels[i, ::configuration.get_subsamples()])
             print('Done!')
@@ -290,17 +299,38 @@ for subject in subjects:
         #                         labels[i, ::configuration.get_subsamples()])
         # print("Done! Got the following scores: " + str(score))
 
-    configuration.save_model(predictor, 'subject-%d' % subject)
+    classifier_file = configuration.save_model(predictor, 'subject-%d' % subject)
 
-    events = np.transpose(np.concatenate([extract_events_from_file(file)[0] for file in test_labels]))
-    error = compare_predicted_and_actual(events, predictions)
-    print('Sum of error: '+str(np.sum(error)/error.shape[0]))
+    actual_events_proba = np.transpose(np.concatenate([extract_events_from_file(file)[0] for file in test_labels]))
+    error = compare_predicted_and_actual(actual_events_proba, predictions)
+    avg_error = np.sum(error) / error.shape[0]
+    print('Sum of error: ' + str(avg_error))
+    current_result = (
+        configuration.get_classifier_type(),
+        classifier_file,
+        configuration.get_feature_extractor_type(),
+        extractor_file,
+        configuration.get_subsamples(),
+        configuration.get_feature_extractor_settings()['number-of-filters'],
+        configuration.get_feature_extractor_settings()['regularization'],
+        configuration.get_pre_filtering_settings()['order'],
+        configuration.get_smoothing_window_size(),
+        configuration.get_smoothing_type(),
+        subject,
+        avg_error,
+        time.strftime('%d/%m/%Y'),
+        time.strftime('%H:%M:%S'),
+        current_id
+    )
     pred_tot.append(predictions)
+    print('Saving results...')
+    configuration.save_result([current_result])
+    print('Done!')
 
-    print('Creating submission file')
+print('Creating submission file')
 # create pandas object for submission
 submission = pd.DataFrame(index=np.concatenate(ids_tot),
-                          columns=cols,
+                          columns=events,
                           data=np.concatenate(pred_tot))
 
 # write file

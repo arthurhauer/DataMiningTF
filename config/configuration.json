@@ -1,15 +1,24 @@
 {
   "general": {
+    "events": [
+      "HandStart",
+      "FirstDigitTouch",
+      "BothStartLoadPhase",
+      "LiftOff",
+      "Replace",
+      "BothReleased"
+    ],
     "maximum-paralel-jobs": 10,
-    "subsamples": 100,
+    "subsamples": 1,
     "cross-validation-folds": 8,
     "dataset-path": "../dataset/train/",
     "trained-models-path": "../models/",
+    "trained-extractors-path": "../extractors/",
     "submission-path": "../submission/",
-    "result-path": "../results/",
+    "result-path": "../results/results.csv",
     "subject-range": {
       "start": 1,
-      "end": 2
+      "end": 13
     },
     "sampling-frequency": 500,
     "should-save-results": true
@@ -24,18 +33,26 @@
     "type": "csp",
     "event-window-before": 2,
     "event-window-after": 2,
-    "preload-model-file": "subject-1_csp_20210903191602_.sav",
+    "preload-model-file": "_csp_20210905113839_.sav",
     "should-train": false,
-    "should-save": false,
+    "should-save": true,
     "smoothing-window-size": 250,
     "smoothing-type": "boxcar",
-    "number-of-filters": 4,
-    "regularization": "ledoit_wolf"
+    "number-of-filters": 10,
+    "regularization": "ledoit_wolf",
+    "multiple-subjects": {
+      "should-use-same": true,
+      "should-train": true
+    }
   },
   "classifier": {
-    "type": "support-vector-machine",
+    "type": "logistic-regression",
     "preload-model-file": null,
     "should-train": true,
-    "should-save": true
+    "should-save": true,
+    "multiple-subjects": {
+      "should-use-same-classifier": true,
+      "should-train": true
+    }
   }
 }
