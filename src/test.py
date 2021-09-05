@@ -1,3 +1,4 @@
+import gc
 import time
 from typing import Any
 
@@ -21,6 +22,8 @@ from mne.decoding import CSP
 from scipy.signal import butter, lfilter, convolve
 
 from sklearn.linear_model import LogisticRegression
+from sklearn import metrics
+
 from glob import glob
 
 from joblib import Parallel, delayed
@@ -194,6 +197,7 @@ def get_classifier(configuration_data: Configuration) -> Any:
         if chosen_classifier == "multi-layer-perceptron":
             return neural_network.MLPClassifier(
                 learning_rate='adaptive',
+                hidden_layer_sizes=(100, 50, 100)
             )
         elif chosen_classifier == 'linear-discriminant-analysis':
             return LinearDiscriminantAnalysis(
@@ -205,7 +209,7 @@ def get_classifier(configuration_data: Configuration) -> Any:
             )
         elif chosen_classifier == 'support-vector-machine':
             return svm.SVC(
-                max_iter=200,
+                max_iter=1000,
                 probability=True
             )
         else:
@@ -225,6 +229,30 @@ def compare_predicted_and_actual(events_data, predicted):
     return predicted_event_quadratic_error
 
 
+# def resample_data(gt, chunk_size=1000):
+#     """
+#     split long signals to smaller chunks, discard no-events chunks
+#     """
+#     total_discard_chunks = 0
+#     mean_val = []
+#     threshold = 0.01
+#     index = []
+#
+#     for i in range(len(gt)):
+#         for j in range(0, len(gt[i]), chunk_size):
+#             mean_val.append(np.mean(gt[i][:, j:min(len(gt[i]), j + chunk_size)]))
+#             if mean_val[-1] < threshold:  # discard chunks with low events time
+#                 total_discard_chunks += 1
+#             else:
+#                 index.extend([(i, k) for k in range(j, min(len(gt[i]), j + chunk_size))])
+#
+#     print('Total number of chunks discarded: {} chunks'.format(total_discard_chunks))
+#     print('{}% data'.format(total_discard_chunks / len(mean_val)))
+#     del mean_val
+#     gc.collect()
+#     return index
+
+
 configuration = Configuration()
 
 dataset_path = configuration.get_dataset_path()
@@ -241,15 +269,20 @@ for subject in subjects:
     epochs_tot = []
     train_files, test_files = cross_validation_prepare(8, subject)
     # read and concatenate all the files
-    train_raw = concatenate_raws([creat_mne_raw_object(train_file) for train_file in train_files])
+    # train_raw = concatenate_raws([creat_mne_raw_object(train_file) for train_file in train_files])
+    train_raw=joblib.load('../dataset/pre-filtered/subject1.sav')
 
     # pick eeg signal
     picks = pick_types(train_raw.info, eeg=True)
 
-    # Filter data for alpha frequency and beta band
-    train_raw._data[picks] = np.array(
-        Parallel(n_jobs=configuration.get_maximum_paralel_jobs())(
-            delayed(lfilter)(b, a, train_raw._data[i]) for i in picks))
+    # # Filter data for alpha frequency and beta band
+    # train_raw._data[picks] = np.array(
+    #     Parallel(n_jobs=configuration.get_maximum_paralel_jobs())(
+    #         delayed(lfilter)(b, a, train_raw._data[i]) for i in picks))
+
+    # print('Saved pre-filtered data')
+
+    # train_raw._data = resample_data(train_raw._data)
 
     # Train feature extractor
     (feature_extractor, extractor_file) = train_feature_extractor(train_raw,
@@ -302,9 +335,11 @@ for subject in subjects:
     classifier_file = configuration.save_model(predictor, 'subject-%d' % subject)
 
     actual_events_proba = np.transpose(np.concatenate([extract_events_from_file(file)[0] for file in test_labels]))
-    error = compare_predicted_and_actual(actual_events_proba, predictions)
-    avg_error = np.sum(error) / error.shape[0]
-    print('Sum of error: ' + str(avg_error))
+    mean_squared_error = metrics.mean_absolute_error(actual_events_proba, predictions)
+    roc_score = metrics.roc_auc_score(actual_events_proba, predictions)
+    roc_auc_score = metrics.roc_auc_score(actual_events_proba, predictions)
+    # precision_score = metrics.precision_score(actual_events_proba, predictions)
+    # accuracy_score = metrics.accuracy_score(actual_events_proba, predictions)
     current_result = (
         configuration.get_classifier_type(),
         classifier_file,
@@ -317,23 +352,27 @@ for subject in subjects:
         configuration.get_smoothing_window_size(),
         configuration.get_smoothing_type(),
         subject,
-        avg_error,
+        mean_squared_error,
+        roc_score,
+        roc_auc_score,
+        0,
+        0,
         time.strftime('%d/%m/%Y'),
         time.strftime('%H:%M:%S'),
         current_id
     )
-    pred_tot.append(predictions)
+    # pred_tot.append(predictions)
     print('Saving results...')
     configuration.save_result([current_result])
     print('Done!')
 
-print('Creating submission file')
-# create pandas object for submission
-submission = pd.DataFrame(index=np.concatenate(ids_tot),
-                          columns=events,
-                          data=np.concatenate(pred_tot))
-
-# write file
-submission.to_csv('%s%s_%s.csv' % (submission_path, configuration.get_classifier_type(), time.strftime('%Y%m%d%H%M%S')),
-                  index_label='id',
-                  float_format='%.5f')
+# print('Creating submission file')
+# # create pandas object for submission
+# submission = pd.DataFrame(index=np.concatenate(ids_tot),
+#                           columns=events,
+#                           data=np.concatenate(pred_tot))
+#
+# # write file
+# submission.to_csv('%s%s_%s.csv' % (submission_path, configuration.get_classifier_type(), time.strftime('%Y%m%d%H%M%S')),
+#                   index_label='id',
+#                   float_format='%.5f')

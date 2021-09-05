@@ -62,7 +62,11 @@ class Configuration:
                 'smoothing_window',
                 'smoothing_type',
                 'subject',
-                'error',
+                'mean_squared_error',
+                'roc_score',
+                'roc_auc_score',
+                'precision_score',
+                'accuracy_score',
                 'date',
                 'time',
                 'id']

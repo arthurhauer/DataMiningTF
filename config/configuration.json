@@ -9,7 +9,7 @@
       "BothReleased"
     ],
     "maximum-paralel-jobs": 10,
-    "subsamples": 1,
+    "subsamples": 250,
     "cross-validation-folds": 8,
     "dataset-path": "../dataset/train/",
     "trained-models-path": "../models/",
@@ -18,14 +18,14 @@
     "result-path": "../results/results.csv",
     "subject-range": {
       "start": 1,
-      "end": 13
+      "end": 2
     },
     "sampling-frequency": 500,
     "should-save-results": true
   },
   "pre-filtering": {
     "type": "butterworth",
-    "order": 5,
+    "order": 1,
     "maximum-frequency": 30,
     "minimum-frequency": 7
   },
@@ -36,9 +36,9 @@
     "preload-model-file": "_csp_20210905113839_.sav",
     "should-train": false,
     "should-save": true,
-    "smoothing-window-size": 250,
+    "smoothing-window-size": 200,
     "smoothing-type": "boxcar",
-    "number-of-filters": 10,
+    "number-of-filters": 20,
     "regularization": "ledoit_wolf",
     "multiple-subjects": {
       "should-use-same": true,
@@ -46,7 +46,7 @@
     }
   },
   "classifier": {
-    "type": "logistic-regression",
+    "type": "support-vector-machine",
     "preload-model-file": null,
     "should-train": true,
     "should-save": true,
