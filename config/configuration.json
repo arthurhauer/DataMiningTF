@@ -18,7 +18,7 @@
     "result-path": "../results/results.csv",
     "subject-range": {
       "start": 1,
-      "end": 2
+      "end": 13
     },
     "sampling-frequency": 500,
     "should-save-results": true
@@ -35,20 +35,20 @@
     "event-window-after": 2,
     "preload-model-file": "_csp_20210905113839_.sav",
     "should-train": false,
-    "should-save": true,
+    "should-save": false,
     "smoothing-window-size": 200,
     "smoothing-type": "boxcar",
     "number-of-filters": 20,
     "regularization": "ledoit_wolf",
     "multiple-subjects": {
       "should-use-same": true,
-      "should-train": true
+      "should-train": false
     }
   },
   "classifier": {
-    "type": "support-vector-machine",
-    "preload-model-file": null,
-    "should-train": true,
+    "type": "logistic-regression",
+    "preload-model-file": "subject-1_logistic-regression_20210905210959_.sav",
+    "should-train": false,
     "should-save": true,
     "multiple-subjects": {
       "should-use-same-classifier": true,

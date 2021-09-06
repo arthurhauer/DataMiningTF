@@ -1,5 +1,4 @@
 import json
-import os
 import pathlib
 import time
 import csv
@@ -7,6 +6,8 @@ from os.path import exists
 
 import joblib
 from typing import Any, List
+
+from src.utils.utils import creat_mne_raw_object
 
 
 class Configuration:
@@ -70,6 +71,15 @@ class Configuration:
                 'date',
                 'time',
                 'id']
+
+    def load_data(self, filename: str) -> Any:
+        pre_filtered_file = filename.replace('/train', '/pre-filtered')
+        if exists(pre_filtered_file):
+            return joblib.load(pre_filtered_file)
+        else:
+            raw_array = creat_mne_raw_object(filename)
+            joblib.dump(raw_array, pre_filtered_file)
+            return raw_array
 
     def save_result(self, result: List[Any]):
         should_create_headers = False
