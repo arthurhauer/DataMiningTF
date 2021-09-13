@@ -1,17 +1,18 @@
+import csv
 import json
 import pathlib
 import time
-import csv
 from os.path import exists
+from typing import Any, List, Tuple
 
 import joblib
-from typing import Any, List
 
 from src.utils.utils import creat_mne_raw_object
 
 
 class Configuration:
     _config: dict
+    _index: int
 
     # ----------------------------------------------------------------------------------------------------------------------#
 
@@ -19,13 +20,22 @@ class Configuration:
         configuration_file = open('../config/configuration.json', 'r')
         self._config = json.load(configuration_file)
         configuration_file.close()
+        self.set_index(0)
 
     # ----------------------------------------------------------------------------------------------------------------------#
+
+    def set_index(self, index: int):
+        if index >= self.get_config_size():
+            raise Exception("Index exceeds configuration array length.")
+        self._index = index
+
+    def get_config_size(self) -> int:
+        return len(self._config)
 
     # region General Settings
 
     def get_general_settings(self) -> dict:
-        return self._config['general']
+        return self._config[self._index]['general']
 
     def get_events(self) -> List[str]:
         return self.get_general_settings()['events']
@@ -116,7 +126,7 @@ class Configuration:
     # region Pre-filtering
 
     def get_pre_filtering_settings(self) -> dict:
-        return self._config['pre-filtering']
+        return self._config[self._index]['pre-filtering']
 
     def get_pre_filtering_type(self) -> str:
         return self.get_pre_filtering_settings()['type']
@@ -128,7 +138,7 @@ class Configuration:
     # region Feature extraction
 
     def get_feature_extractor_settings(self) -> dict:
-        return self._config['feature-extractor']
+        return self._config[self._index]['feature-extractor']
 
     def should_train_extractor(self) -> bool:
         return self.get_feature_extractor_settings()['should-train'] is True
@@ -150,17 +160,44 @@ class Configuration:
 
     def save_extractor(self, extractor: Any, prefix: str = "", sufix: str = "") -> str:
         if self._should_save_extractor():
-            if self._should_save_classifier():
-                filename = "%s%s_%s_%s_%s.sav" % (
-                    self.get_trained_extractors_path(),
-                    prefix,
-                    self.get_feature_extractor_type(),
-                    time.strftime('%Y%m%d%H%M%S'),
-                    sufix
-                )
-                joblib.dump(extractor, filename)
-                return filename
-            return None
+            filename = "%s%s_%s_%s_%s.sav" % (
+                self.get_trained_extractors_path(),
+                prefix,
+                self.get_feature_extractor_type(),
+                time.strftime('%Y%m%d%H%M%S'),
+                sufix
+            )
+            joblib.dump(extractor, filename)
+            return filename
+        return None
+
+    def _generate_extracted_data_filename(self, subject: int, series: List[int]) -> Tuple[str, str]:
+        data_file = "%ssubject%d_series%s_data_%s%d%d%d_%s.sav" % (
+            self.get_dataset_path().replace('train', 'extracted'),
+            subject,
+            "".join([str(series_number) for series_number in series]),
+            self.get_feature_extractor_type(),
+            self.get_event_window_before(),
+            self.get_event_window_after(),
+            self.get_smoothing_window_size(),
+            self.get_smoothing_type(),
+        )
+        labels_file = data_file.replace('_data_', '_labels_')
+        return data_file, labels_file
+
+    def load_extracted_data(self, subject: int, series: List[int]) -> Any:
+        data_file, labels_file = self._generate_extracted_data_filename(subject, series)
+        if not exists(data_file):
+            return None, None
+        else:
+            return joblib.load(data_file), joblib.load(labels_file)
+
+    def save_extracted_data(self, data: Any, label_data: Any, subject: int, series: List[int]) -> Tuple[str, str]:
+        data_file, labels_file = self._generate_extracted_data_filename(subject, series)
+        if not exists(data_file):
+            joblib.dump(data, data_file)
+            joblib.dump(label_data, labels_file)
+        return data_file, labels_file
 
     def get_feature_extractor_type(self) -> str:
         return self.get_feature_extractor_settings()['type']
@@ -184,7 +221,7 @@ class Configuration:
     # region Classifier
 
     def get_classifier_settings(self) -> dict:
-        return self._config['classifier']
+        return self._config[self._index]['classifier']
 
     def get_classifier_type(self) -> str:
         return self.get_classifier_settings()['type']

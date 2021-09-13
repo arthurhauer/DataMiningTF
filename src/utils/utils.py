@@ -48,8 +48,8 @@ def resample_data(gt, chunk_size=1000):
 def cross_validation_prepare(folds, subject_index, dataset_path) -> Any:
     if folds > 8 or folds < 2:
         raise Exception('Unsupported folds')
-    return glob(dataset_path + 'subj%d_series[1-7]_data.csv' % subject_index), [
-        dataset_path + 'subj%d_series8_data.csv' % subject_index]
+    return glob(dataset_path + 'subj%d_series[1-7]_data.csv' % subject_index), list(range(1, 8)),[
+        dataset_path + 'subj%d_series8_data.csv' % subject_index], [8]
 
 
 def creat_mne_raw_object(fname, read_events=True):

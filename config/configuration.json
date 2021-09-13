@@ -1,58 +1,60 @@
-{
-  "general": {
-    "events": [
-      "HandStart",
-      "FirstDigitTouch",
-      "BothStartLoadPhase",
-      "LiftOff",
-      "Replace",
-      "BothReleased"
-    ],
-    "maximum-paralel-jobs": 10,
-    "subsamples": 250,
-    "cross-validation-folds": 8,
-    "dataset-path": "../dataset/train/",
-    "trained-models-path": "../models/",
-    "trained-extractors-path": "../extractors/",
-    "submission-path": "../submission/",
-    "result-path": "../results/results.csv",
-    "subject-range": {
-      "start": 1,
-      "end": 13
+[
+  {
+    "general": {
+      "events": [
+        "HandStart",
+        "FirstDigitTouch",
+        "BothStartLoadPhase",
+        "LiftOff",
+        "Replace",
+        "BothReleased"
+      ],
+      "maximum-paralel-jobs": 10,
+      "subsamples": 250,
+      "cross-validation-folds": 8,
+      "dataset-path": "../dataset/train/",
+      "trained-models-path": "../models/",
+      "trained-extractors-path": "../extractors/",
+      "submission-path": "../submission/",
+      "result-path": "../results/results.csv",
+      "subject-range": {
+        "start": 4,
+        "end": 5
+      },
+      "sampling-frequency": 500,
+      "should-save-results": true
     },
-    "sampling-frequency": 500,
-    "should-save-results": true
-  },
-  "pre-filtering": {
-    "type": "butterworth",
-    "order": 1,
-    "maximum-frequency": 30,
-    "minimum-frequency": 7
-  },
-  "feature-extractor": {
-    "type": "csp",
-    "event-window-before": 2,
-    "event-window-after": 2,
-    "preload-model-file": "_csp_20210905113839_.sav",
-    "should-train": false,
-    "should-save": false,
-    "smoothing-window-size": 200,
-    "smoothing-type": "boxcar",
-    "number-of-filters": 20,
-    "regularization": "ledoit_wolf",
-    "multiple-subjects": {
-      "should-use-same": true,
-      "should-train": false
-    }
-  },
-  "classifier": {
-    "type": "logistic-regression",
-    "preload-model-file": "subject-1_logistic-regression_20210905210959_.sav",
-    "should-train": false,
-    "should-save": true,
-    "multiple-subjects": {
-      "should-use-same-classifier": true,
-      "should-train": true
+    "pre-filtering": {
+      "type": "butterworth",
+      "order": 1,
+      "maximum-frequency": 30,
+      "minimum-frequency": 7
+    },
+    "feature-extractor": {
+      "type": "csp",
+      "event-window-before": 2,
+      "event-window-after": 2,
+      "preload-model-file": "_csp_20210905113839_.sav",
+      "should-train": true,
+      "should-save": false,
+      "smoothing-window-size": 200,
+      "smoothing-type": "boxcar",
+      "number-of-filters": 20,
+      "regularization": "ledoit_wolf",
+      "multiple-subjects": {
+        "should-use-same": true,
+        "should-train": false
+      }
+    },
+    "classifier": {
+      "type": "support-vector-machine",
+      "preload-model-file": "subject-3_support-vector-machine_20210906145151_.sav",
+      "should-train": true,
+      "should-save": true,
+      "multiple-subjects": {
+        "should-use-same-classifier": true,
+        "should-train": true
+      }
     }
   }
-}
+]
