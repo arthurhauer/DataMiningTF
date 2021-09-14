@@ -40,8 +40,8 @@ class Configuration:
     def get_events(self) -> List[str]:
         return self.get_general_settings()['events']
 
-    def get_maximum_paralel_jobs(self) -> int:
-        return self.get_general_settings()['maximum-paralel-jobs']
+    def get_maximum_parallel_jobs(self) -> int:
+        return self.get_general_settings()['maximum-parallel-jobs']
 
     def get_subsamples(self) -> int:
         return self.get_general_settings()['subsamples']
@@ -91,7 +91,7 @@ class Configuration:
             joblib.dump(raw_array, pre_filtered_file)
             return raw_array
 
-    def save_result(self, result: List[Any]):
+    def save_result(self, result: List[Any], headers: List[str] = None):
         should_create_headers = False
         result_path = self.get_result_path()
         if not exists(result_path):
@@ -100,7 +100,7 @@ class Configuration:
         file = open(self.get_result_path(), 'a', newline='\n', encoding='utf-8')
         writer = csv.writer(file)
         if should_create_headers:
-            writer.writerow(self._get_result_headers())
+            writer.writerow(self._get_result_headers() if headers is None else headers)
         writer.writerows(result)
         file.close()
 

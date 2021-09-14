@@ -45,11 +45,15 @@ def resample_data(gt, chunk_size=1000):
     return index
 
 
-def cross_validation_prepare(folds, subject_index, dataset_path) -> Any:
-    if folds > 8 or folds < 2:
-        raise Exception('Unsupported folds')
-    return glob(dataset_path + 'subj%d_series[1-7]_data.csv' % subject_index), list(range(1, 8)),[
-        dataset_path + 'subj%d_series8_data.csv' % subject_index], [8]
+def cross_validation_prepare(iteration, subject_index, dataset_path) -> Any:
+    train_series = list(range(1, 9))
+    test_series = iteration + 1
+    del train_series[iteration]
+    train_files = []
+    for series in train_series:
+        train_files.append(dataset_path + 'subj%d_series%d_data.csv' % (subject_index, series))
+    return train_files, train_series, [
+        dataset_path + 'subj%d_series%d_data.csv' % (subject_index, test_series)], [test_series]
 
 
 def creat_mne_raw_object(fname, read_events=True):

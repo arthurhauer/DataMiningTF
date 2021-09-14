@@ -9,7 +9,7 @@
         "Replace",
         "BothReleased"
       ],
-      "maximum-paralel-jobs": 10,
+      "maximum-parallel-jobs": 10,
       "subsamples": 250,
       "cross-validation-folds": 8,
       "dataset-path": "../dataset/train/",
@@ -18,15 +18,15 @@
       "submission-path": "../submission/",
       "result-path": "../results/results.csv",
       "subject-range": {
-        "start": 4,
-        "end": 5
+        "start": 1,
+        "end": 10
       },
       "sampling-frequency": 500,
       "should-save-results": true
     },
     "pre-filtering": {
       "type": "butterworth",
-      "order": 1,
+      "order": 5,
       "maximum-frequency": 30,
       "minimum-frequency": 7
     },
@@ -34,9 +34,9 @@
       "type": "csp",
       "event-window-before": 2,
       "event-window-after": 2,
-      "preload-model-file": "_csp_20210905113839_.sav",
+      "preload-model-file": null,
       "should-train": true,
-      "should-save": false,
+      "should-save": true,
       "smoothing-window-size": 200,
       "smoothing-type": "boxcar",
       "number-of-filters": 20,
@@ -47,8 +47,8 @@
       }
     },
     "classifier": {
-      "type": "support-vector-machine",
-      "preload-model-file": "subject-3_support-vector-machine_20210906145151_.sav",
+      "type": "linear-discriminant-analysis",
+      "preload-model-file": null,
       "should-train": true,
       "should-save": true,
       "multiple-subjects": {
