@@ -33,8 +33,7 @@ def create_pre_filter(configuration_data: Configuration) -> Any:
         raise Exception("Unsupported pre-filtering type. Available filters: " + "butterworth")
 
 
-def train_feature_extractor(data, data_picks, configuration_data: Configuration) -> Any:
-    extractor = None
+def train_feature_extractor(data, data_picks, configuration_data: Configuration, extractor = None) -> Any:
     epochs_tot = []
     if configuration_data.has_preloaded_extractor():
         print('Loading extractor file...')
@@ -141,6 +140,7 @@ def get_classifier(configuration_data: Configuration) -> Any:
         chosen_classifier = configuration_data.get_classifier_type()
         if chosen_classifier == "multi-layer-perceptron":
             return neural_network.MLPClassifier(
+                max_iter=500,
                 learning_rate='adaptive',
                 hidden_layer_sizes=(100, 100, 75, 50, 25)
             )

@@ -34,9 +34,9 @@
       "type": "csp",
       "event-window-before": 2,
       "event-window-after": 2,
-      "preload-model-file": null,
-      "should-train": true,
-      "should-save": true,
+      "preload-model-file": "trained_on_all_csp_20210914192550_.sav",
+      "should-train": false,
+      "should-save": false,
       "smoothing-window-size": 200,
       "smoothing-type": "boxcar",
       "number-of-filters": 20,
@@ -47,7 +47,7 @@
       }
     },
     "classifier": {
-      "type": "linear-discriminant-analysis",
+      "type": "multi-layer-perceptron",
       "preload-model-file": null,
       "should-train": true,
       "should-save": true,
