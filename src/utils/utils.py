@@ -1,4 +1,5 @@
 import gc
+from math import sqrt
 from glob import glob
 from typing import Any
 
@@ -92,3 +93,24 @@ def creat_mne_raw_object(fname, read_events=True):
     raw_array.set_montage(montage)
 
     return raw_array
+
+
+def DTWDistance(s1, s2, w):
+    DTW = {}
+
+    w = max(w, abs(len(s1) - len(s2)))
+    print('Initializing distances matrix')
+    for i in range(-1, len(s1)):
+        for j in range(-1, len(s2)):
+            DTW[(i, j)] = float('inf')
+    DTW[(-1, -1)] = 0
+
+    print('Calculating distances')
+    for i in range(len(s1)):
+        for j in range(max(0, i - w), min(len(s2), i + w)):
+            dist = []
+            for k in range(len(s1[0])):
+                dist.append((s1[i][k] - s2[j][k]) ** 2)
+            DTW[(i, j)] = np.average(dist) + min(DTW[(i - 1, j)], DTW[(i, j - 1)], DTW[(i - 1, j - 1)])
+
+    return sqrt(DTW[len(s1) - 1, len(s2) - 1])
