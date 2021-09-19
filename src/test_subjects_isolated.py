@@ -1,11 +1,14 @@
 import time
 import pandas as pd
 import uuid
+
+from matplotlib import pyplot as plt
 from mne import concatenate_raws, pick_types
 
 from scipy.signal import lfilter
 
 from sklearn import metrics
+from sklearn.metrics import roc_curve
 
 from src.utils.processing_utils.processing_utils import *
 from src.utils.utils import cross_validation_prepare, creat_mne_raw_object, extract_events_from_file
@@ -22,6 +25,9 @@ for config_index in range(0, configuration.get_config_size()):
     error_tot = []
     results = []
     b, a = create_pre_filter(configuration)
+    fpr = []
+    tpr = []
+    roc_auc = []
     for subject in subjects:
         for iteration in range(0, 8):
             train_files, train_series, test_files, test_series = cross_validation_prepare(iteration, subject,
@@ -82,11 +88,11 @@ for config_index in range(0, configuration.get_config_size()):
             del loaded_test_data
             del loaded_test_labels
 
-            predictor = get_classifier(configuration)
+            predictor, grid = get_classifier(configuration)
             events = configuration.get_events()
             events_length = len(events)
             predictions = np.empty((len(ids), events_length))
-
+            # predictor = gridsearch_classifier_tuning(training_data, labels, predictor, grid, configuration)
             print('Starting classifier training')
             for i in range(1, events_length):
                 if configuration.should_train_classifier():
@@ -104,31 +110,31 @@ for config_index in range(0, configuration.get_config_size()):
 
             actual_events_proba = np.transpose(
                 np.concatenate([extract_events_from_file(file)[0] for file in test_labels]))
-            mean_squared_error = metrics.mean_absolute_error(actual_events_proba, predictions)
-            roc_score = metrics.roc_auc_score(actual_events_proba, predictions)
             roc_auc_score = metrics.roc_auc_score(actual_events_proba, predictions)
+            for i in range(6):
+                fpr[i], tpr[i], _ = metrics.roc_curve(actual_events_proba[:, i], predictions[:, i])
+                roc_auc[i] = metrics.auc(fpr[i], tpr[i])
             current_result = (
                 configuration.get_classifier_type(),
-                classifier_file,
                 configuration.get_feature_extractor_type(),
-                extractor_file,
-                configuration.get_subsamples(),
-                configuration.get_feature_extractor_settings()['number-of-filters'],
-                configuration.get_feature_extractor_settings()['regularization'],
-                configuration.get_pre_filtering_settings()['order'],
-                configuration.get_smoothing_window_size(),
-                configuration.get_smoothing_type(),
+                configuration.get_event_window(),
+                0 if configuration.get_smoothing_type() is None else configuration.get_smoothing_window_size(),
+                'no_smoothing' if configuration.get_smoothing_type() is None else configuration.get_smoothing_type(),
                 subject,
-                mean_squared_error,
-                roc_score,
                 roc_auc_score,
-                0,
-                0,
-                time.strftime('%d/%m/%Y'),
-                time.strftime('%H:%M:%S'),
-                current_id,
                 test_series
             )
             print('Saving results...')
             configuration.save_result([current_result])
             print('Done!')
+
+    plt.figure()
+    plt.plot(np.mean(fpr[i]), np.mean(tpr[i]), linewidth=3)
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('FPRP')
+    plt.ylabel('TPR')
+    plt.title('Área da curva  (area = %0.2f)' % (l[i], np.mean(roc_auc[i])), fontsize=15)
+    plt.legend(loc="lower right")
+    plt.show()

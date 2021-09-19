@@ -9,8 +9,8 @@
         "Replace",
         "BothReleased"
       ],
-      "maximum-parallel-jobs": 10,
-      "subsamples": 250,
+      "maximum-parallel-jobs": -1,
+      "subsamples": 1,
       "cross-validation-folds": 8,
       "dataset-path": "../dataset/train/",
       "trained-models-path": "../models/",
@@ -19,42 +19,33 @@
       "result-path": "../results/results.csv",
       "subject-range": {
         "start": 1,
-        "end": 10
+        "end": 13
       },
       "sampling-frequency": 500,
       "should-save-results": true
     },
     "pre-filtering": {
       "type": "butterworth",
-      "order": 5,
+      "order": 4,
       "maximum-frequency": 30,
-      "minimum-frequency": 7
+      "minimum-frequency": 8
     },
     "feature-extractor": {
       "type": "csp",
-      "event-window-before": 2,
-      "event-window-after": 2,
-      "preload-model-file": "trained_on_all_csp_20210914192550_.sav",
-      "should-train": false,
+      "event-window": 1,
+      "preload-model-file":null,
+      "should-train": true,
       "should-save": false,
-      "smoothing-window-size": 200,
+      "smoothing-window-size": 300,
       "smoothing-type": "boxcar",
-      "number-of-filters": 20,
-      "regularization": "ledoit_wolf",
-      "multiple-subjects": {
-        "should-use-same": true,
-        "should-train": false
-      }
+      "number-of-filters": 6,
+      "regularization": "ledoit_wolf"
     },
     "classifier": {
-      "type": "multi-layer-perceptron",
+      "type": "linear-discriminant-analysis",
       "preload-model-file": null,
       "should-train": true,
-      "should-save": true,
-      "multiple-subjects": {
-        "should-use-same-classifier": true,
-        "should-train": true
-      }
+      "should-save": false
     }
   }
 ]

@@ -63,24 +63,13 @@ class Configuration:
 
     def _get_result_headers(self) -> List[str]:
         return ['classifier',
-                'classifier_file',
                 'extractor',
-                'extractor_file',
-                'subsampling',
-                'nfilter',
-                'regularization',
-                'pre_filter_order',
+                'window',
                 'smoothing_window',
                 'smoothing_type',
                 'subject',
-                'mean_squared_error',
                 'roc_score',
-                'roc_auc_score',
-                'precision_score',
-                'accuracy_score',
-                'date',
-                'time',
-                'id']
+                'test_series']
 
     def load_data(self, filename: str) -> Any:
         pre_filtered_file = filename.replace('/train', '/pre-filtered')
@@ -172,15 +161,14 @@ class Configuration:
         return None
 
     def _generate_extracted_data_filename(self, subject: int, series: List[int]) -> Tuple[str, str]:
-        data_file = "%ssubject%d_series%s_data_%s%d%d%d_%s.sav" % (
+        data_file = "%ssubject%d_series%s_data_%s_window-%d_smooth-window-%d_smooth-type-%s.sav" % (
             self.get_dataset_path().replace('train', 'extracted'),
             subject,
             "".join([str(series_number) for series_number in series]),
             self.get_feature_extractor_type(),
-            self.get_event_window_before(),
-            self.get_event_window_after(),
-            self.get_smoothing_window_size(),
-            self.get_smoothing_type(),
+            self.get_event_window(),
+            0 if self.get_smoothing_type() is None else self.get_smoothing_window_size(),
+            '' if self.get_smoothing_type() is None else self.get_smoothing_window_size(),
         )
         labels_file = data_file.replace('_data_', '_labels_')
         return data_file, labels_file
@@ -202,11 +190,8 @@ class Configuration:
     def get_feature_extractor_type(self) -> str:
         return self.get_feature_extractor_settings()['type']
 
-    def get_event_window_before(self) -> int:
-        return self.get_feature_extractor_settings()['event-window-before']
-
-    def get_event_window_after(self) -> int:
-        return self.get_feature_extractor_settings()['event-window-after']
+    def get_event_window(self) -> int:
+        return self.get_feature_extractor_settings()['event-window']
 
     def get_smoothing_window_size(self) -> int:
         return self.get_feature_extractor_settings()['smoothing-window-size']

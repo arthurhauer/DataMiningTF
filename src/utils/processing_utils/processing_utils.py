@@ -1,7 +1,7 @@
-from typing import Any, List
+from typing import Any, List, Tuple
 
 import numpy as np
-import tsfel
+from numpy import arange
 from sklearn import svm, neural_network
 
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
@@ -13,8 +13,12 @@ from mne.decoding import CSP
 from scipy.signal import butter, convolve, get_window
 
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import make_scorer, roc_auc_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import RepeatedStratifiedKFold
 
 from joblib import Parallel, delayed
+from sklearn.multiclass import OneVsRestClassifier
 
 from config.configuration import Configuration
 
@@ -33,7 +37,7 @@ def create_pre_filter(configuration_data: Configuration) -> Any:
         raise Exception("Unsupported pre-filtering type. Available filters: " + "butterworth")
 
 
-def train_feature_extractor(data, data_picks, configuration_data: Configuration, extractor = None) -> Any:
+def train_feature_extractor(data, data_picks, configuration_data: Configuration, extractor=None) -> Any:
     epochs_tot = []
     if configuration_data.has_preloaded_extractor():
         print('Loading extractor file...')
@@ -41,28 +45,22 @@ def train_feature_extractor(data, data_picks, configuration_data: Configuration,
         ex_file = configuration_data.get_preload_extractor_file()
     if configuration_data.should_train_extractor() or extractor is None:
         print('Starting feature extractor training')
-        event_window_before = configuration_data.get_event_window_before()
-        event_window_after = configuration_data.get_event_window_after()
+        event_window = configuration_data.get_event_window()
         y = []
-        # get event position corresponding to HandStart
+
         events_data = find_events(data, stim_channel=configuration_data.get_events(), verbose=False)
-        # epochs signal for 2 second after the event
-        epochs = Epochs(data, events_data, {'during': 1}, 0, event_window_after, proj=False,
+        epochs = Epochs(data, events_data, {'during': 1}, 0, event_window, proj=False,
                         picks=data_picks, baseline=None, preload=True,
                         verbose=False)
 
         epochs_tot.append(epochs)
         y.extend([1] * len(epochs))
-
-        # epochs signal for 2 second before the event, this correspond to the
-        # rest period.
-        epochs_rest = Epochs(data, events_data, {'before': 1}, -event_window_before, 0, proj=False,
+        epochs_rest = Epochs(data, events_data, {'before': 1}, -event_window, 0, proj=False,
                              picks=data_picks, baseline=None, preload=True,
                              verbose=False)
 
         # Workaround to be able to concatenate epochs with MNE
         epochs_rest.set_times(epochs.times)
-        #
         y.extend([-1] * len(epochs_rest))
         epochs_tot.append(epochs_rest)
         # Concatenate all epochs
@@ -85,12 +83,8 @@ def train_feature_extractor(data, data_picks, configuration_data: Configuration,
                 extractor = CSP(n_components=num_filters, reg=regularization)
             extractor.fit(x, y)
 
-        elif extractor_type == 'tsfel':
-            print('Training TSFEL')
-            if extractor is None:
-                extractor = tsfel.get_features_by_domain()
         else:
-            raise Exception('Unsupported feature extractor. Available types: ' + 'csp, ' + 'tsfel')
+            raise Exception('Unsupported feature extractor. Available types: ' + 'csp')
         ex_file = configuration_data.save_extractor(extractor)
     print('Done!')
     return extractor, ex_file
@@ -105,20 +99,18 @@ def preprocess_data(data, data_picks, configuration_data: Configuration, subject
     smoothing_type = configuration_data.get_smoothing_type()
     if smoothing_type is None:
         smoothing = None
-    smoothing = get_window(smoothing_type, configuration_data.get_smoothing_window_size())
+    else:
+        smoothing = get_window(smoothing_type, configuration_data.get_smoothing_window_size())
 
     print('Extracting features')
     if trained_feature_extractor is None:
         extracted_data = data
     elif isinstance(trained_feature_extractor, CSP):
         extracted_data = np.dot(trained_feature_extractor.filters_[0:number_of_filters], data._data[data_picks]) ** 2
-    elif configuration_data.get_feature_extractor_type() == 'tsfel':
-        extracted_data = tsfel.time_series_features_extractor(trained_feature_extractor, data._data[data_picks],
-                                                              fs=configuration_data.get_sampling_frequency())
     else:
-        raise Exception("Unsupported feature extractor. Available types: " + 'csp, ' + 'tsfel')
-    print('Smoothing')
+        raise Exception("Unsupported feature extractor. Available types: " + 'csp')
     if smoothing is not None:
+        print('Smoothing')
         processed_data = np.array(
             Parallel(n_jobs=configuration_data.get_maximum_parallel_jobs())(
                 delayed(convolve)(extracted_data[i], smoothing, 'full') for i in range(number_of_filters)))
@@ -132,7 +124,7 @@ def preprocess_data(data, data_picks, configuration_data: Configuration, subject
     return processed_data, label_data
 
 
-def get_classifier(configuration_data: Configuration) -> Any:
+def get_classifier(configuration_data: Configuration) -> Tuple[Any, Any]:
     print('Choosing classifier')
     if configuration_data.has_preloaded_model():
         return configuration_data.get_preloaded_model()
@@ -143,20 +135,33 @@ def get_classifier(configuration_data: Configuration) -> Any:
                 max_iter=500,
                 learning_rate='adaptive',
                 hidden_layer_sizes=(100, 100, 75, 50, 25)
-            )
+            ), {}
         elif chosen_classifier == 'linear-discriminant-analysis':
-            return LinearDiscriminantAnalysis(
+            return LinearDiscriminantAnalysis(solver='lsqr', shrinkage=0.1), [
+                {
+                    'solver': ['lsqr', 'eigen'],
+                    'shrinkage': arange(0, 1, 0.1)
+                }
+            ]
 
-            )
         elif chosen_classifier == 'logistic-regression':
             return LogisticRegression(
 
-            )
+            ), {}
         elif chosen_classifier == 'support-vector-machine':
             return svm.SVC(
-                max_iter=10000,
+                max_iter=500,
                 probability=True
-            )
+            ), {}
         else:
             raise Exception(
                 'Unsupported classifier. Available classifiers:' + 'multi-layer-perceptron, ' + 'linear-discriminant-analysis, ' + 'logistic-regression, ' + 'support-vector-machine')
+
+
+def gridsearch_classifier_tuning(training_data: Any, training_labels: Any, classifier: Any, grid: dict,
+                                 configuration: Configuration) -> Any:
+    scorer = make_scorer(roc_auc_score, greater_is_better=True, needs_proba=True, multi_class='ovr')
+    search = GridSearchCV(classifier, grid, scoring=scorer, n_jobs=-1, verbose=3)
+    results = search.fit(training_data[:, :].T, np.transpose(training_labels[:, :]))
+    classifier.set_params(results.best_params_)
+    return classifier
